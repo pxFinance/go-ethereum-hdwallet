@@ -21,31 +21,23 @@ type MsgGetCFCheckpt struct {
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgGetCFCheckpt) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	if _, err := io.ReadFull(r, buf[:1]); err != nil {
+	err := readElement(r, &msg.FilterType)
+	if err != nil {
 		return err
 	}
-	msg.FilterType = FilterType(buf[0])
 
-	_, err := io.ReadFull(r, msg.StopHash[:])
-	return err
+	return readElement(r, &msg.StopHash)
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgGetCFCheckpt) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	buf[0] = byte(msg.FilterType)
-	if _, err := w.Write(buf[:1]); err != nil {
+	err := writeElement(w, msg.FilterType)
+	if err != nil {
 		return err
 	}
 
-	_, err := w.Write(msg.StopHash[:])
-	return err
+	return writeElement(w, &msg.StopHash)
 }
 
 // Command returns the protocol command string for the message.  This is part

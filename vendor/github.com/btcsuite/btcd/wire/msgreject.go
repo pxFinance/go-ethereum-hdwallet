@@ -81,24 +81,21 @@ func (msg *MsgReject) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) e
 	}
 
 	// Command that was rejected.
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	cmd, err := readVarStringBuf(r, pver, buf)
+	cmd, err := ReadVarString(r, pver)
 	if err != nil {
 		return err
 	}
 	msg.Cmd = cmd
 
 	// Code indicating why the command was rejected.
-	if _, err := io.ReadFull(r, buf[:1]); err != nil {
+	err = readElement(r, &msg.Code)
+	if err != nil {
 		return err
 	}
-	msg.Code = RejectCode(buf[0])
 
 	// Human readable string with specific details (over and above the
 	// reject code above) about why the command was rejected.
-	reason, err := readVarStringBuf(r, pver, buf)
+	reason, err := ReadVarString(r, pver)
 	if err != nil {
 		return err
 	}
@@ -107,7 +104,7 @@ func (msg *MsgReject) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) e
 	// CmdBlock and CmdTx messages have an additional hash field that
 	// identifies the specific block or transaction.
 	if msg.Cmd == CmdBlock || msg.Cmd == CmdTx {
-		_, err := io.ReadFull(r, msg.Hash[:])
+		err := readElement(r, &msg.Hash)
 		if err != nil {
 			return err
 		}
@@ -126,23 +123,20 @@ func (msg *MsgReject) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) e
 	}
 
 	// Command that was rejected.
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	err := writeVarStringBuf(w, pver, msg.Cmd, buf)
+	err := WriteVarString(w, pver, msg.Cmd)
 	if err != nil {
 		return err
 	}
 
 	// Code indicating why the command was rejected.
-	buf[0] = byte(msg.Code)
-	if _, err := w.Write(buf[:1]); err != nil {
+	err = writeElement(w, msg.Code)
+	if err != nil {
 		return err
 	}
 
 	// Human readable string with specific details (over and above the
 	// reject code above) about why the command was rejected.
-	err = writeVarStringBuf(w, pver, msg.Reason, buf)
+	err = WriteVarString(w, pver, msg.Reason)
 	if err != nil {
 		return err
 	}
@@ -150,7 +144,7 @@ func (msg *MsgReject) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) e
 	// CmdBlock and CmdTx messages have an additional hash field that
 	// identifies the specific block or transaction.
 	if msg.Cmd == CmdBlock || msg.Cmd == CmdTx {
-		_, err := w.Write(msg.Hash[:])
+		err := writeElement(w, &msg.Hash)
 		if err != nil {
 			return err
 		}

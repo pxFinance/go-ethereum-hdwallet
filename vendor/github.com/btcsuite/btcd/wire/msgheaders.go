@@ -37,10 +37,7 @@ func (msg *MsgHeaders) AddBlockHeader(bh *BlockHeader) error {
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgHeaders) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	count, err := ReadVarIntBuf(r, pver, buf)
+	count, err := ReadVarInt(r, pver)
 	if err != nil {
 		return err
 	}
@@ -58,12 +55,12 @@ func (msg *MsgHeaders) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 	msg.Headers = make([]*BlockHeader, 0, count)
 	for i := uint64(0); i < count; i++ {
 		bh := &headers[i]
-		err := readBlockHeaderBuf(r, pver, bh, buf)
+		err := readBlockHeader(r, pver, bh)
 		if err != nil {
 			return err
 		}
 
-		txCount, err := ReadVarIntBuf(r, pver, buf)
+		txCount, err := ReadVarInt(r, pver)
 		if err != nil {
 			return err
 		}
@@ -91,16 +88,13 @@ func (msg *MsgHeaders) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		return messageError("MsgHeaders.BtcEncode", str)
 	}
 
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	err := WriteVarIntBuf(w, pver, uint64(count), buf)
+	err := WriteVarInt(w, pver, uint64(count))
 	if err != nil {
 		return err
 	}
 
 	for _, bh := range msg.Headers {
-		err := writeBlockHeaderBuf(w, pver, bh, buf)
+		err := writeBlockHeader(w, pver, bh)
 		if err != nil {
 			return err
 		}
@@ -109,7 +103,7 @@ func (msg *MsgHeaders) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		// of transactions on header messages.  This is really just an
 		// artifact of the way the original implementation serializes
 		// block headers, but it is required.
-		err = WriteVarIntBuf(w, pver, 0, buf)
+		err = WriteVarInt(w, pver, 0)
 		if err != nil {
 			return err
 		}

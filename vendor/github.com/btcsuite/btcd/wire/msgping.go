@@ -32,11 +32,10 @@ func (msg *MsgPing) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) err
 	// NOTE: > is not a mistake here.  The BIP0031 was defined as AFTER
 	// the version unlike most others.
 	if pver > BIP0031Version {
-		nonce, err := binarySerializer.Uint64(r, littleEndian)
+		err := readElement(r, &msg.Nonce)
 		if err != nil {
 			return err
 		}
-		msg.Nonce = nonce
 	}
 
 	return nil
@@ -49,7 +48,7 @@ func (msg *MsgPing) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) err
 	// NOTE: > is not a mistake here.  The BIP0031 was defined as AFTER
 	// the version unlike most others.
 	if pver > BIP0031Version {
-		err := binarySerializer.PutUint64(w, littleEndian, msg.Nonce)
+		err := writeElement(w, msg.Nonce)
 		if err != nil {
 			return err
 		}

@@ -51,20 +51,16 @@ func (msg *MsgGetBlocks) AddBlockLocatorHash(hash *chainhash.Hash) error {
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	if _, err := io.ReadFull(r, buf[:4]); err != nil {
-		return err
-	}
-	msg.ProtocolVersion = littleEndian.Uint32(buf[:4])
-
-	// Read num block locator hashes and limit to max.
-	count, err := ReadVarIntBuf(r, pver, buf)
+	err := readElement(r, &msg.ProtocolVersion)
 	if err != nil {
 		return err
 	}
 
+	// Read num block locator hashes and limit to max.
+	count, err := ReadVarInt(r, pver)
+	if err != nil {
+		return err
+	}
 	if count > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
@@ -77,15 +73,14 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	msg.BlockLocatorHashes = make([]*chainhash.Hash, 0, count)
 	for i := uint64(0); i < count; i++ {
 		hash := &locatorHashes[i]
-		_, err := io.ReadFull(r, hash[:])
+		err := readElement(r, hash)
 		if err != nil {
 			return err
 		}
 		msg.AddBlockLocatorHash(hash)
 	}
 
-	_, err = io.ReadFull(r, msg.HashStop[:])
-	return err
+	return readElement(r, &msg.HashStop)
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
@@ -98,28 +93,24 @@ func (msg *MsgGetBlocks) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding
 		return messageError("MsgGetBlocks.BtcEncode", str)
 	}
 
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	littleEndian.PutUint32(buf[:4], msg.ProtocolVersion)
-	if _, err := w.Write(buf[:4]); err != nil {
+	err := writeElement(w, msg.ProtocolVersion)
+	if err != nil {
 		return err
 	}
 
-	err := WriteVarIntBuf(w, pver, uint64(count), buf)
+	err = WriteVarInt(w, pver, uint64(count))
 	if err != nil {
 		return err
 	}
 
 	for _, hash := range msg.BlockLocatorHashes {
-		_, err := w.Write(hash[:])
+		err = writeElement(w, hash)
 		if err != nil {
 			return err
 		}
 	}
 
-	_, err = w.Write(msg.HashStop[:])
-	return err
+	return writeElement(w, &msg.HashStop)
 }
 
 // Command returns the protocol command string for the message.  This is part

@@ -9,8 +9,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -60,7 +60,7 @@ func newWallet(seed []byte) (*Wallet, error) {
 }
 
 // NewFromMnemonic returns a new wallet from a BIP-39 mnemonic.
-func NewFromMnemonic(mnemonic string, passOpt ...string) (*Wallet, error) {
+func NewFromMnemonic(mnemonic string) (*Wallet, error) {
 	if mnemonic == "" {
 		return nil, errors.New("mnemonic is required")
 	}
@@ -69,7 +69,7 @@ func NewFromMnemonic(mnemonic string, passOpt ...string) (*Wallet, error) {
 		return nil, errors.New("mnemonic is invalid")
 	}
 
-	seed, err := NewSeedFromMnemonic(mnemonic, passOpt...)
+	seed, err := NewSeedFromMnemonic(mnemonic)
 	if err != nil {
 		return nil, err
 	}
@@ -229,15 +229,8 @@ func (w *Wallet) SignHash(account accounts.Account, hash []byte) ([]byte, error)
 	return crypto.Sign(hash, privateKey)
 }
 
-// SignTxWithSigner allows the account to sign a transaction using a custom signer.
-func (w *Wallet) SignTxWithSigner(account accounts.Account, tx *types.Transaction, signer types.Signer) (*types.Transaction, error) {
-	if tx == nil {
-		return nil, errors.New("nil transaction")
-	}
-	if signer == nil {
-		return nil, errors.New("nil signer")
-	}
-
+// SignTxEIP155 implements accounts.Wallet, which allows the account to sign an ERC-20 transaction.
+func (w *Wallet) SignTxEIP155(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	w.stateLock.RLock() // Comms have own mutex, this is for the state fields
 	defer w.stateLock.RUnlock()
 
@@ -252,6 +245,7 @@ func (w *Wallet) SignTxWithSigner(account accounts.Account, tx *types.Transactio
 		return nil, err
 	}
 
+	signer := types.NewEIP155Signer(chainID)
 	// Sign the transaction and verify the sender to avoid hardware fault surprises
 	signedTx, err := types.SignTx(tx, signer, privateKey)
 	if err != nil {
@@ -270,20 +264,40 @@ func (w *Wallet) SignTxWithSigner(account accounts.Account, tx *types.Transactio
 	return signedTx, nil
 }
 
-// SignTxEIP1559 uses the London Signer which supports
-// EIP-1559 dynamic fee, EIP-2930 access list, EIP-155 replay protected, and legacy Homestead Transactions
-func (w *Wallet) SignTxEIP1559(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	return w.SignTxWithSigner(account, tx, types.NewLondonSigner(chainID))
-}
-
-// SignTxEIP155 implements accounts.Wallet, which allows the account to sign an ERC-20 transaction.
-func (w *Wallet) SignTxEIP155(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	return w.SignTxWithSigner(account, tx, types.NewEIP155Signer(chainID))
-}
-
 // SignTx implements accounts.Wallet, which allows the account to sign an Ethereum transaction.
 func (w *Wallet) SignTx(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	return w.SignTxWithSigner(account, tx, types.LatestSignerForChainID(chainID))
+	w.stateLock.RLock() // Comms have own mutex, this is for the state fields
+	defer w.stateLock.RUnlock()
+
+	// Make sure the requested account is contained within
+	path, ok := w.paths[account.Address]
+	if !ok {
+		return nil, accounts.ErrUnknownAccount
+	}
+
+	privateKey, err := w.derivePrivateKey(path)
+	if err != nil {
+		return nil, err
+	}
+
+	signer := types.LatestSignerForChainID(chainID)
+
+  // Sign the transaction and verify the sender to avoid hardware fault surprises
+	signedTx, err := types.SignTx(tx, signer, privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	sender, err := types.Sender(signer, signedTx)
+	if err != nil {
+		return nil, err
+	}
+
+	if sender != account.Address {
+		return nil, fmt.Errorf("signer mismatch: expected %s, got %s", account.Address.Hex(), sender.Hex())
+	}
+
+	return signedTx, nil
 }
 
 // SignHashWithPassphrase implements accounts.Wallet, attempting
@@ -478,17 +492,12 @@ func NewSeed() ([]byte, error) {
 }
 
 // NewSeedFromMnemonic returns a BIP-39 seed based on a BIP-39 mnemonic.
-func NewSeedFromMnemonic(mnemonic string, passOpt ...string) ([]byte, error) {
+func NewSeedFromMnemonic(mnemonic string) ([]byte, error) {
 	if mnemonic == "" {
 		return nil, errors.New("mnemonic is required")
 	}
 
-	password := ""
-	if len(passOpt) > 0 {
-		password = passOpt[0]
-	}
-
-	return bip39.NewSeedWithErrorChecking(mnemonic, password)
+	return bip39.NewSeedWithErrorChecking(mnemonic, "")
 }
 
 // DerivePrivateKey derives the private key of the derivation path.
@@ -507,19 +516,10 @@ func (w *Wallet) derivePrivateKey(path accounts.DerivationPath) (*ecdsa.PrivateK
 	}
 
 	privateKey, err := key.ECPrivKey()
+	privateKeyECDSA := privateKey.ToECDSA()
 	if err != nil {
 		return nil, err
 	}
-
-	// Create a new private key using secp256k1 as in go-ethereum's implementation
-	// https://github.com/ethereum/go-ethereum/blob/b62756d1a3b8b09430f5b060caa7382c8117fb90/crypto/signature_nocgo.go#L82
-	privateKeyECDSA := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{
-			Curve: crypto.S256(),
-		},
-		D: privateKey.ToECDSA().D,
-	}
-	privateKeyECDSA.PublicKey.X, privateKeyECDSA.PublicKey.Y = privateKeyECDSA.PublicKey.Curve.ScalarBaseMult(privateKeyECDSA.D.Bytes())
 
 	return privateKeyECDSA, nil
 }

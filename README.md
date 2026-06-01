@@ -1,6 +1,6 @@
 <h3 align="center">
   <br />
-  <img src="https://github.com/miguelmota/go-ethereum-hdwallet/assets/168240/20a63a4b-cb97-4e23-8f59-e89d0fd91882" alt="logo" width="600" />
+  <img src="https://user-images.githubusercontent.com/168240/51436479-a4cf9e80-1c42-11e9-9af3-3bb827b8f2de.png" alt="logo" width="600" />
   <br />
   <br />
   <br />
@@ -121,40 +121,10 @@ public address: 0xC49926C4124cEe1cbA0Ea94Ea31a6c12318df947
 private key: 63e21d10fd50155dbba0e7d3f7431a400b84b4c2ac1ee38872f82448fe3ecfb9
 ```
 
-## Development
-
-Build CLI:
-
-```bash
-make build
-```
-
-Format code:
-
-```bash
-make format
-```
-
-### Test
-
-Run tests:
+## Test
 
 ```bash
 make test
-```
-
-### Release
-
-Git tag after committing latest changes:
-
-```bash
-git tag v0.1.x
-```
-
-Create a release with [goreleaser](https://github.com/goreleaser/goreleaser):
-
-```bash
-make release
 ```
 
 ## Contributing
@@ -165,6 +135,4 @@ For contributions please create a new branch and submit a pull request for revie
 
 ## License
 
-Released under the [MIT](./LICENSE) license.
-
-© [Miguel Mota](https://github.com/miguelmota)
+[MIT](LICENSE)

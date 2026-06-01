@@ -52,22 +52,20 @@ func (msg *MsgCFCheckpt) AddCFHeader(header *chainhash.Hash) error {
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgCFCheckpt) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
 	// Read filter type
-	if _, err := io.ReadFull(r, buf[:1]); err != nil {
+	err := readElement(r, &msg.FilterType)
+	if err != nil {
 		return err
 	}
-	msg.FilterType = FilterType(buf[0])
 
 	// Read stop hash
-	if _, err := io.ReadFull(r, msg.StopHash[:]); err != nil {
+	err = readElement(r, &msg.StopHash)
+	if err != nil {
 		return err
 	}
 
 	// Read number of filter headers
-	count, err := ReadVarIntBuf(r, pver, buf)
+	count, err := ReadVarInt(r, pver)
 	if err != nil {
 		return err
 	}
@@ -82,7 +80,7 @@ func (msg *MsgCFCheckpt) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) 
 	msg.FilterHeaders = make([]*chainhash.Hash, count)
 	for i := uint64(0); i < count; i++ {
 		var cfh chainhash.Hash
-		_, err := io.ReadFull(r, cfh[:])
+		err := readElement(r, &cfh)
 		if err != nil {
 			return err
 		}
@@ -95,29 +93,27 @@ func (msg *MsgCFCheckpt) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgCFCheckpt) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
 	// Write filter type
-	buf[0] = byte(msg.FilterType)
-	if _, err := w.Write(buf[:1]); err != nil {
+	err := writeElement(w, msg.FilterType)
+	if err != nil {
 		return err
 	}
 
 	// Write stop hash
-	if _, err := w.Write(msg.StopHash[:]); err != nil {
+	err = writeElement(w, msg.StopHash)
+	if err != nil {
 		return err
 	}
 
 	// Write length of FilterHeaders slice
 	count := len(msg.FilterHeaders)
-	err := WriteVarIntBuf(w, pver, uint64(count), buf)
+	err = WriteVarInt(w, pver, uint64(count))
 	if err != nil {
 		return err
 	}
 
 	for _, cfh := range msg.FilterHeaders {
-		_, err := w.Write(cfh[:])
+		err := writeElement(w, cfh)
 		if err != nil {
 			return err
 		}

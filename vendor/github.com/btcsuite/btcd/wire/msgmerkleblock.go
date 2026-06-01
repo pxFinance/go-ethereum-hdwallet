@@ -49,21 +49,18 @@ func (msg *MsgMerkleBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncodi
 		return messageError("MsgMerkleBlock.BtcDecode", str)
 	}
 
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	err := readBlockHeaderBuf(r, pver, &msg.Header, buf)
+	err := readBlockHeader(r, pver, &msg.Header)
 	if err != nil {
 		return err
 	}
 
-	if _, err := io.ReadFull(r, buf[:4]); err != nil {
+	err = readElement(r, &msg.Transactions)
+	if err != nil {
 		return err
 	}
-	msg.Transactions = littleEndian.Uint32(buf[:4])
 
 	// Read num block locator hashes and limit to max.
-	count, err := ReadVarIntBuf(r, pver, buf)
+	count, err := ReadVarInt(r, pver)
 	if err != nil {
 		return err
 	}
@@ -79,14 +76,14 @@ func (msg *MsgMerkleBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncodi
 	msg.Hashes = make([]*chainhash.Hash, 0, count)
 	for i := uint64(0); i < count; i++ {
 		hash := &hashes[i]
-		_, err := io.ReadFull(r, hash[:])
+		err := readElement(r, hash)
 		if err != nil {
 			return err
 		}
 		msg.AddTxHash(hash)
 	}
 
-	msg.Flags, err = ReadVarBytesBuf(r, pver, buf, maxFlagsPerMerkleBlock,
+	msg.Flags, err = ReadVarBytes(r, pver, maxFlagsPerMerkleBlock,
 		"merkle block flags size")
 	return err
 }
@@ -114,32 +111,28 @@ func (msg *MsgMerkleBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncodi
 		return messageError("MsgMerkleBlock.BtcDecode", str)
 	}
 
-	buf := binarySerializer.Borrow()
-	defer binarySerializer.Return(buf)
-
-	err := writeBlockHeaderBuf(w, pver, &msg.Header, buf)
+	err := writeBlockHeader(w, pver, &msg.Header)
 	if err != nil {
 		return err
 	}
 
-	littleEndian.PutUint32(buf[:4], msg.Transactions)
-	if _, err := w.Write(buf[:4]); err != nil {
+	err = writeElement(w, msg.Transactions)
+	if err != nil {
 		return err
 	}
 
-	err = WriteVarIntBuf(w, pver, uint64(numHashes), buf)
+	err = WriteVarInt(w, pver, uint64(numHashes))
 	if err != nil {
 		return err
 	}
 	for _, hash := range msg.Hashes {
-		_, err := w.Write(hash[:])
+		err = writeElement(w, hash)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = WriteVarBytesBuf(w, pver, msg.Flags, buf)
-	return err
+	return WriteVarBytes(w, pver, msg.Flags)
 }
 
 // Command returns the protocol command string for the message.  This is part
